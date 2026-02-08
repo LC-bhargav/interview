@@ -131,20 +131,28 @@ def process_interview_turn():
         # 2. Generate response
         ai_response = generate_response(user_transcript, chat_history, interview_type)
         
-        # 3. Synthesize speech (with fallback if ElevenLabs fails)
+        # 3. Synthesize speech (with more detailed error reporting)
         audio_base64 = ""
+        tts_error = None
         try:
             audio_bytes = synthesize_speech(ai_response)
             audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
         except Exception as e:
-            print(f"ElevenLabs failed (continuing without audio): {e}")
+            tts_error = str(e)
+            print(f"ElevenLabs failed: {e}")
             # Continue without audio - the text response will still work
         
-        return jsonify({
+        response_data = {
             "user_transcript": user_transcript,
             "ai_response_text": ai_response,
             "audio_base64": audio_base64,
-        }), 200
+        }
+        
+        # Include TTS error in response for debugging
+        if tts_error:
+            response_data["tts_error"] = tts_error
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         print(f"Error: {e}")
