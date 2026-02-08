@@ -18,7 +18,15 @@ from groq import Groq
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins="*", supports_credentials=True)  # Enable CORS for all origins
+CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS for all origins
+
+# Add CORS headers to all responses
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # API Keys from environment
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
