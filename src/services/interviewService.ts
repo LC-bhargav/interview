@@ -57,16 +57,15 @@ export async function processInterviewTurn(
 
         return data;
     } catch (error) {
-        console.warn("Backend unavailable, using mock response:", error);
+        console.error("Backend connection error:", error);
+        console.error("Tried URL:", CLOUD_FUNCTION_URL);
 
-        // Mock response for testing/demo when backend is not running
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate latency
-
-        return {
-            user_transcript: "This is a simulated user transcript because the backend is not running.",
-            ai_response_text: "I am unable to connect to the AI backend at the moment, but I can pretend to interview you. Can you tell me more about your experience with React?",
-            audio_base64: "" // No audio in mock mode
-        };
+        // Re-throw the error instead of using mock response for now
+        // This helps identify the actual issue
+        if (error instanceof Error) {
+            throw new Error(`Backend connection failed: ${error.message}. URL: ${CLOUD_FUNCTION_URL}`);
+        }
+        throw error;
     }
 }
 
