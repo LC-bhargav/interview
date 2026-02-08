@@ -18,7 +18,7 @@ from groq import Groq
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, origins="*", supports_credentials=True)  # Enable CORS for all origins
 
 # API Keys from environment
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
@@ -108,7 +108,11 @@ def synthesize_speech(text: str) -> bytes:
 def process_interview_turn():
     """Process a single interview turn."""
     if request.method == 'OPTIONS':
-        return '', 204
+        response = app.make_default_options_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
     
     try:
         audio_file = request.files.get('audio')
