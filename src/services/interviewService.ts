@@ -20,9 +20,9 @@ export interface InterviewTurnResponse {
 
 export type InterviewType = 'technical' | 'behavioral' | 'case_study';
 
-// Cloud Function URL - Update this after deploying
+// Cloud Function URL - Railway Deployment (24/7 available)
 const CLOUD_FUNCTION_URL = process.env.NEXT_PUBLIC_CLOUD_FUNCTION_URL ||
-    'http://127.0.0.1:5001/interview-92a23/us-central1/process_interview_turn';
+    'https://interview-production-ac52.up.railway.app/interview-92a23/us-central1/process_interview_turn';
 
 /**
  * Process a single turn in the interview.
