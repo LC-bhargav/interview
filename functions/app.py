@@ -20,13 +20,6 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS for all origins
 
-# Add CORS headers to all responses
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    return response
 
 # API Keys from environment
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
@@ -116,11 +109,7 @@ def synthesize_speech(text: str) -> bytes:
 def process_interview_turn():
     """Process a single interview turn."""
     if request.method == 'OPTIONS':
-        response = app.make_default_options_response()
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        return response
+        return '', 204
     
     try:
         audio_file = request.files.get('audio')
