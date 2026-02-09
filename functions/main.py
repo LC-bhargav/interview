@@ -148,42 +148,28 @@ Present business problems and guide the candidate through structured problem-sol
 
 
 
+import asyncio
+import edge_tts
+
 def synthesize_speech(text: str) -> bytes:
     """
-    Convert text to speech using ElevenLabs Turbo v2.
-    
-    Args:
-        text: Text to convert to speech
-        
-    Returns:
-        Audio bytes (MP3 format)
+    Convert text to speech using Edge-TTS (Free).
     """
-    if not ELEVENLABS_API_KEY:
-        raise ValueError("ELEVENLABS_API_KEY environment variable is not set")
+    voice = "en-US-AriaNeural"
+    communicate = edge_tts.Communicate(text, voice)
     
-    response = requests.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",
-        headers={
-            "xi-api-key": ELEVENLABS_API_KEY,
-            "Content-Type": "application/json",
-        },
-        json={
-            "text": text,
-            "model_id": "eleven_turbo_v2",  # Low-latency model
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75,
-                "style": 0.0,
-                "use_speaker_boost": True,
-            }
-        },
-        timeout=30,
-    )
-    
-    if response.status_code != 200:
-        raise Exception(f"ElevenLabs API error: {response.status_code} - {response.text}")
-    
-    return response.content
+    async def get_audio():
+        audio_data = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data += chunk["data"]
+        return audio_data
+
+    try:
+        # Run async function in sync wrapper
+        return asyncio.run(get_audio())
+    except Exception as e:
+        raise Exception(f"Edge-TTS error: {str(e)}")
 
 
 # Configure CORS for the function

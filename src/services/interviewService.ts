@@ -16,6 +16,7 @@ export interface InterviewTurnResponse {
     ai_response_text: string;
     audio_base64: string;
     error?: string;
+    tts_error?: string;  // ElevenLabs error if TTS failed
 }
 
 export type InterviewType = 'technical' | 'behavioral' | 'case_study';
@@ -38,27 +39,47 @@ export async function processInterviewTurn(
     formData.append('history', JSON.stringify(chatHistory));
     formData.append('interview_type', interviewType);
 
+    console.log('[Interview API] Sending request to:', CLOUD_FUNCTION_URL);
+    console.log('[Interview API] Audio blob size:', audioBlob.size, 'bytes');
+
     try {
         const response = await fetch(CLOUD_FUNCTION_URL, {
             method: 'POST',
             body: formData,
         });
 
+        console.log('[Interview API] Response status:', response.status);
+
         if (!response.ok) {
             const errorText = await response.text();
+            console.error('[Interview API] Error response:', errorText);
             throw new Error(`Interview API error: ${response.status} - ${errorText}`);
         }
 
         const data: InterviewTurnResponse = await response.json();
 
+        console.log('[Interview API] Received response:');
+        console.log('[Interview API] - User transcript:', data.user_transcript?.substring(0, 50) || '(empty)');
+        console.log('[Interview API] - AI response:', data.ai_response_text?.substring(0, 50) || '(empty)');
+        console.log('[Interview API] - Audio base64 length:', data.audio_base64?.length || 0);
+
         if (data.error) {
+            console.error('[Interview API] Error in response:', data.error);
             throw new Error(data.error);
+        }
+
+        if (data.tts_error) {
+            console.error('[Interview API] ⚠️ TTS (ElevenLabs) Error:', data.tts_error);
+        }
+
+        if (!data.audio_base64) {
+            console.warn('[Interview API] ⚠️ No audio data in response - voice playback will be skipped');
         }
 
         return data;
     } catch (error) {
-        console.error("Backend connection error:", error);
-        console.error("Tried URL:", CLOUD_FUNCTION_URL);
+        console.error("[Interview API] Connection error:", error);
+        console.error("[Interview API] Tried URL:", CLOUD_FUNCTION_URL);
 
         // Re-throw the error instead of using mock response for now
         // This helps identify the actual issue
@@ -74,17 +95,46 @@ export async function processInterviewTurn(
  */
 export function playAudioFromBase64(base64Audio: string): Promise<void> {
     return new Promise((resolve, reject) => {
+        // Debug logging
+        console.log('[Audio Playback] Attempting to play audio...');
+        console.log('[Audio Playback] Base64 length:', base64Audio?.length || 0);
+
         if (!base64Audio) {
+            console.warn('[Audio Playback] No audio data provided - skipping playback');
             resolve();
             return;
         }
 
+        if (base64Audio.length < 100) {
+            console.warn('[Audio Playback] Audio data seems too short:', base64Audio.substring(0, 50));
+        }
+
         const audio = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
 
-        audio.onended = () => resolve();
-        audio.onerror = (e) => reject(new Error(`Audio playback error: ${e}`));
+        audio.oncanplaythrough = () => {
+            console.log('[Audio Playback] Audio loaded and ready to play');
+        };
 
-        audio.play().catch(reject);
+        audio.onended = () => {
+            console.log('[Audio Playback] Playback completed successfully');
+            resolve();
+        };
+
+        audio.onerror = (e) => {
+            console.error('[Audio Playback] Error:', e);
+            console.error('[Audio Playback] Audio error code:', audio.error?.code);
+            console.error('[Audio Playback] Audio error message:', audio.error?.message);
+            reject(new Error(`Audio playback error: ${audio.error?.message || e}`));
+        };
+
+        audio.play()
+            .then(() => {
+                console.log('[Audio Playback] play() started successfully');
+            })
+            .catch((err) => {
+                console.error('[Audio Playback] play() failed:', err);
+                reject(err);
+            });
     });
 }
 
