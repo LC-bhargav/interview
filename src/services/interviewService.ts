@@ -27,6 +27,13 @@ export type InterviewType = 'technical' | 'behavioral' | 'case_study';
 const CLOUD_FUNCTION_URL = process.env.NEXT_PUBLIC_CLOUD_FUNCTION_URL ||
     '/api/interview/process_interview_turn';
 
+
+export interface TTSOptions {
+    provider: 'edge' | 'sarvam';
+    language: string;
+    model?: string;
+}
+
 /**
  * Process a single turn in the interview.
  * Sends audio to the backend, receives transcript and AI response.
@@ -34,12 +41,20 @@ const CLOUD_FUNCTION_URL = process.env.NEXT_PUBLIC_CLOUD_FUNCTION_URL ||
 export async function processInterviewTurn(
     audioBlob: Blob,
     chatHistory: ChatMessage[],
-    interviewType: InterviewType = 'technical'
+    interviewType: InterviewType = 'technical',
+    ttsOptions: TTSOptions = { provider: 'edge', language: 'en-US-AriaNeural' }
 ): Promise<InterviewTurnResponse> {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.webm');
     formData.append('history', JSON.stringify(chatHistory));
     formData.append('interview_type', interviewType);
+
+    // Add TTS options
+    formData.append('tts_provider', ttsOptions.provider);
+    formData.append('tts_language', ttsOptions.language);
+    if (ttsOptions.model) {
+        formData.append('tts_model', ttsOptions.model);
+    }
 
     console.log('[Interview API] Sending request to:', CLOUD_FUNCTION_URL);
     console.log('[Interview API] Audio blob size:', audioBlob.size, 'bytes');

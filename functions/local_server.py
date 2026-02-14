@@ -20,11 +20,15 @@ load_dotenv()
 # Import the processing functions from main.py
 from main import (
     transcribe_audio,
+    transcribe_audio_sarvam,
     generate_response,
-    synthesize_speech,
+    synthesize_speech_edge,
+    synthesize_speech_sarvam,
     DEEPGRAM_API_KEY,
     ELEVENLABS_API_KEY,
     GROQ_API_KEY,
+    SARVAM_API_KEY,
+    get_groq_client,
 )
 
 app = Flask(__name__)
@@ -41,9 +45,15 @@ def process_interview_turn():
     
     try:
         # 1. Parse request
+        print("DEBUG: Request Form Data:", request.form)
         audio_file = request.files.get('audio')
         history_json = request.form.get('history', '[]')
         interview_type = request.form.get('interview_type', 'technical')
+        
+        # TTS Options
+        tts_provider = request.form.get('tts_provider', 'edge')
+        tts_language = request.form.get('tts_language', 'hi-IN')
+        tts_model = request.form.get('tts_model', 'bulbul:v3')
         
         if not audio_file:
             print("Error: No audio file provided")
@@ -55,12 +65,25 @@ def process_interview_turn():
         except json.JSONDecodeError:
             chat_history = []
         
-        # 2. Speech-to-Text (Deepgram)
+        # 2. Speech-to-Text (Deepgram or Sarvam)
         audio_data = audio_file.read()
         content_type = audio_file.content_type or 'audio/webm'
         
-        print(f"Transcribing audio... (Size: {len(audio_data)} bytes, Type: {content_type})")
-        user_transcript = transcribe_audio(audio_data, content_type)
+        # Check if we should use Sarvam STT (for Indic languages when Sarvam TTS selected)
+        use_sarvam_stt = False
+        if tts_provider == "sarvam" and tts_language:
+            if not tts_language.startswith("en-"):
+                use_sarvam_stt = True
+        
+        if use_sarvam_stt:
+            print(f"Transcribing audio with Sarvam (Language: {tts_language})...")
+            user_transcript = transcribe_audio_sarvam(audio_data, language_code=tts_language, content_type=content_type)
+        else:
+            # Fallback to Deepgram for English
+            stt_language = "en"
+            print(f"Transcribing audio with Deepgram (Language: {stt_language})...")
+            user_transcript = transcribe_audio(audio_data, language=stt_language, content_type=content_type)
+
         print(f"Transcript: '{user_transcript}'")
         
         if not user_transcript.strip():
@@ -76,8 +99,13 @@ def process_interview_turn():
         ai_response_text = generate_response(user_transcript, chat_history, interview_type)
         print(f"AI Response: '{ai_response_text}'")
         
-        # 4. Text-to-Speech (ElevenLabs)
-        audio_bytes = synthesize_speech(ai_response_text)
+        # 4. Text-to-Speech
+        print(f"Synthesizing speech using {tts_provider}...")
+        if tts_provider == 'sarvam':
+            audio_bytes = synthesize_speech_sarvam(ai_response_text, tts_language)
+        else:
+            audio_bytes = synthesize_speech_edge(ai_response_text)
+            
         audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
         
         # 5. Return response
@@ -101,6 +129,7 @@ def health_check():
             "groq": bool(GROQ_API_KEY),
             "deepgram": bool(DEEPGRAM_API_KEY),
             "elevenlabs": bool(ELEVENLABS_API_KEY),
+            "sarvam": bool(SARVAM_API_KEY),
         }
     }), 200
 
@@ -111,6 +140,7 @@ if __name__ == '__main__':
     print(f"✅ Groq API Key:      {'Set' if GROQ_API_KEY else '❌ Missing!'}")
     print(f"✅ Deepgram API Key:  {'Set' if DEEPGRAM_API_KEY else '❌ Missing!'}")
     print(f"✅ ElevenLabs Key:    {'Set' if ELEVENLABS_API_KEY else '❌ Missing!'}")
+    print(f"✅ Sarvam API Key:    {'Set' if SARVAM_API_KEY else '❌ Missing!'}")
     print("=" * 50)
     print("🚀 Starting server on http://127.0.0.1:5001")
     print("=" * 50 + "\n")

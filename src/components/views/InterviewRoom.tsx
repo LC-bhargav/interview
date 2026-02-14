@@ -87,6 +87,25 @@ export function InterviewRoom({ onEnd, interviewType = 'technical' }: InterviewR
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
+    const [ttsProvider, setTtsProvider] = useState<'edge' | 'sarvam'>('edge');
+    const [ttsLanguage, setTtsLanguage] = useState<string>('en-US-AriaNeural');
+    const [showSettings, setShowSettings] = useState(false);
+
+    // sarvam languages
+    const sarvamLanguages = [
+        { code: 'hi-IN', name: 'Hindi' },
+        { code: 'bn-IN', name: 'Bengali' },
+        { code: 'kn-IN', name: 'Kannada' },
+        { code: 'ml-IN', name: 'Malayalam' },
+        { code: 'mr-IN', name: 'Marathi' },
+        { code: 'od-IN', name: 'Odia' },
+        { code: 'pa-IN', name: 'Punjabi' },
+        { code: 'ta-IN', name: 'Tamil' },
+        { code: 'te-IN', name: 'Telugu' },
+        { code: 'gu-IN', name: 'Gujarati' },
+        { code: 'en-IN', name: 'English (India)' },
+    ];
+
     const handleToggleRecording = async () => {
         if (isRecording) {
             // Stop recording and process
@@ -101,7 +120,15 @@ export function InterviewRoom({ onEnd, interviewType = 'technical' }: InterviewR
                 }
 
                 // Process the interview turn
-                const response = await processInterviewTurn(audioBlob, chatHistory, interviewType);
+                const response = await processInterviewTurn(
+                    audioBlob,
+                    chatHistory,
+                    interviewType,
+                    {
+                        provider: ttsProvider,
+                        language: ttsLanguage
+                    }
+                );
 
                 // Update chat history
                 const newMessages: ChatMessage[] = [
@@ -115,8 +142,6 @@ export function InterviewRoom({ onEnd, interviewType = 'technical' }: InterviewR
                 if (response.audio_base64) {
                     await playAudioFromBase64(response.audio_base64);
                 }
-
-
 
             } catch (err) {
                 const errorMessage = err instanceof Error ? err.message : 'Failed to process recording';
@@ -150,9 +175,72 @@ export function InterviewRoom({ onEnd, interviewType = 'technical' }: InterviewR
                 </div>
                 <div className="flex items-center gap-3">
                     <WireframeText variant="caption">Duration: {formatDuration(duration)}</WireframeText>
+                    <WireframeButton variant="outline" size="sm" onClick={() => setShowSettings(!showSettings)}>
+                        Settings
+                    </WireframeButton>
                     <WireframeButton variant="outline" size="sm" onClick={onEnd}>End Interview</WireframeButton>
                 </div>
             </WireframeBox>
+
+            {/* Settings Modal */}
+            {showSettings && (
+                <div className="absolute top-16 right-4 z-50 w-80 shadow-xl">
+                    <MacWindow title="Audio Settings">
+                        <div className="p-4 space-y-4 bg-white">
+                            <div>
+                                <label className="block text-sm font-bold mb-1">TTS Provider</label>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setTtsProvider('edge');
+                                            setTtsLanguage('en-US-AriaNeural');
+                                        }}
+                                        className={`flex-1 px-3 py-2 border-2 text-sm font-mono ${ttsProvider === 'edge' ? 'bg-black text-white border-black' : 'bg-white text-black border-black'}`}
+                                    >
+                                        Edge (Free)
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setTtsProvider('sarvam');
+                                            setTtsLanguage('hi-IN');
+                                        }}
+                                        className={`flex-1 px-3 py-2 border-2 text-sm font-mono ${ttsProvider === 'sarvam' ? 'bg-black text-white border-black' : 'bg-white text-black border-black'}`}
+                                    >
+                                        Sarvam AI
+                                    </button>
+                                </div>
+                            </div>
+
+                            {ttsProvider === 'sarvam' && (
+                                <div>
+                                    <label className="block text-sm font-bold mb-1">Language</label>
+                                    <select
+                                        value={ttsLanguage}
+                                        onChange={(e) => setTtsLanguage(e.target.value)}
+                                        className="w-full p-2 border-2 border-black font-mono text-sm"
+                                    >
+                                        {sarvamLanguages.map((lang) => (
+                                            <option key={lang.code} value={lang.code}>
+                                                {lang.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {ttsProvider === 'edge' && (
+                                <div className="text-xs text-gray-500 font-mono">
+                                    Using default English (Aria) voice.
+                                </div>
+                            )}
+
+                            <WireframeButton variant="primary" size="sm" className="w-full" onClick={() => setShowSettings(false)}>
+                                Done
+                            </WireframeButton>
+                        </div>
+                    </MacWindow>
+                </div>
+            )}
 
             {/* Error Display */}
             {/* ... (Error display remains same) */}

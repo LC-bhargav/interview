@@ -24,9 +24,12 @@ load_dotenv()
 initialize_app()
 
 # Initialize clients from environment variables
+
+# Initialize clients from environment variables
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default: Rachel
+SARVAM_API_KEY = os.environ.get("SARVAM_API_KEY")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 # Configure Groq
@@ -42,16 +45,9 @@ def get_groq_client():
     return groq_client
 
 
-def transcribe_audio(audio_data: bytes, content_type: str = "audio/webm") -> str:
+def transcribe_audio(audio_data: bytes, language: str = "en", content_type: str = "audio/webm") -> str:
     """
     Convert audio to text using Deepgram Nova-2 model.
-    
-    Args:
-        audio_data: Raw audio bytes
-        content_type: MIME type of the audio
-        
-    Returns:
-        Transcribed text
     """
     if not DEEPGRAM_API_KEY:
         raise ValueError("DEEPGRAM_API_KEY environment variable is not set")
@@ -61,7 +57,7 @@ def transcribe_audio(audio_data: bytes, content_type: str = "audio/webm") -> str
         params={
             "model": "nova-2",
             "smart_format": "true",
-            "language": "en",
+            "language": language,
         },
         headers={
             "Authorization": f"Token {DEEPGRAM_API_KEY}",
@@ -80,17 +76,51 @@ def transcribe_audio(audio_data: bytes, content_type: str = "audio/webm") -> str
     return transcript
 
 
+def transcribe_audio_sarvam(audio_data: bytes, language_code: str = "hi-IN", content_type: str = "audio/webm") -> str:
+    """
+    Convert audio to text using Sarvam AI (saarika:v2.5).
+    """
+    if not SARVAM_API_KEY:
+        raise ValueError("SARVAM_API_KEY environment variable is not set")
+    
+    headers = {
+        "api-subscription-key": SARVAM_API_KEY,
+    }
+    
+    # Sarvam might reject complex content types, strip params
+    if ";" in content_type:
+        content_type = content_type.split(";")[0].strip()
+
+    files = {
+        "file": ("audio.webm", audio_data, content_type)
+    }
+    
+    data = {
+        "model": "saarika:v2.5",
+        "language_code": language_code,
+        "with_diarization": "false"
+    }
+
+    response = requests.post(
+        "https://api.sarvam.ai/speech-to-text",
+        headers=headers,
+        files=files,
+        data=data,
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"Sarvam STT API error: {response.status_code} - {response.text}")
+    
+    result = response.json()
+    transcript = result.get("transcript", "")
+    
+    return transcript
+
+
 def generate_response(user_message: str, chat_history: list, interview_type: str = "technical") -> str:
     """
     Generate AI interviewer response using Groq (FREE tier!).
-    
-    Args:
-        user_message: The user's transcribed speech
-        chat_history: Previous conversation messages
-        interview_type: Type of interview (technical, behavioral, case_study)
-        
-    Returns:
-        AI generated response text
     """
     client = get_groq_client()
     
@@ -147,11 +177,10 @@ Present business problems and guide the candidate through structured problem-sol
     return response.choices[0].message.content or ""
 
 
-
 import asyncio
 import edge_tts
 
-def synthesize_speech(text: str) -> bytes:
+def synthesize_speech_edge(text: str) -> bytes:
     """
     Convert text to speech using Edge-TTS (Free).
     """
@@ -172,6 +201,50 @@ def synthesize_speech(text: str) -> bytes:
         raise Exception(f"Edge-TTS error: {str(e)}")
 
 
+def synthesize_speech_sarvam(text: str, language_code: str = "hi-IN", speaker: str = "priya") -> bytes:
+    """
+    Convert text to speech using Sarvam AI.
+    """
+    if not SARVAM_API_KEY:
+        raise ValueError("SARVAM_API_KEY environment variable is not set")
+    
+    # Map 'en-IN' to a valid speaker if needed, though 'meera' works for multiple
+    
+    headers = {
+        "api-subscription-key": SARVAM_API_KEY,
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "inputs": [text],
+        "target_language_code": language_code,
+        "speaker": speaker,
+        "pace": 1.0,
+        "speech_sample_rate": 8000,
+        "enable_preprocessing": True,
+        "model": "bulbul:v3"
+    }
+
+    response = requests.post(
+        "https://api.sarvam.ai/text-to-speech",
+        headers=headers,
+        json=payload,
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"Sarvam AI API error: {response.status_code} - {response.text}")
+    
+    result = response.json()
+    # Sarvam returns audio as base64 string in 'audios' array
+    audio_base64 = result.get("audios", [""])[0]
+    
+    if not audio_base64:
+        raise Exception("Sarvam AI returned empty audio")
+        
+    return base64.b64decode(audio_base64)
+
+
 # Configure CORS for the function
 cors_options = options.CorsOptions(
     cors_origins="*",  # Allow all origins for debugging
@@ -184,19 +257,11 @@ cors_options = options.CorsOptions(
     memory=options.MemoryOption.GB_1,
     timeout_sec=60,
     min_instances=0,  # Set to 1 in production for lower latency
-    secrets=["DEEPGRAM_API_KEY", "GROQ_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"],
+    secrets=["DEEPGRAM_API_KEY", "GROQ_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "SARVAM_API_KEY"],
 )
 def process_interview_turn(req: https_fn.Request) -> https_fn.Response:
     """
     Process a single turn in the interview conversation.
-    
-    Expects:
-        - audio: Audio file (multipart/form-data)
-        - history: JSON string of chat history
-        - interview_type: Type of interview (optional)
-        
-    Returns:
-        JSON with user_transcript, ai_response_text, and audio_base64
     """
     try:
         # Handle preflight OPTIONS request
@@ -211,9 +276,15 @@ def process_interview_turn(req: https_fn.Request) -> https_fn.Response:
             )
         
         # 1. Parse request
+        print("DEBUG: Request Form Data:", req.form)
         audio_file = req.files.get("audio")
         history_json = req.form.get("history", "[]")
         interview_type = req.form.get("interview_type", "technical")
+        
+        # TTS Options
+        tts_provider = req.form.get("tts_provider", "edge")  # 'edge' or 'sarvam'
+        tts_language = req.form.get("tts_language", "hi-IN")
+        tts_model = req.form.get("tts_model", "bulbul:v3")
         
         if not audio_file:
             print("Error: No audio file provided")
@@ -229,12 +300,25 @@ def process_interview_turn(req: https_fn.Request) -> https_fn.Response:
         except json.JSONDecodeError:
             chat_history = []
         
-        # 2. Speech-to-Text (Deepgram)
+        # 2. Speech-to-Text (Deepgram or Sarvam)
         audio_data = audio_file.read()
         content_type = audio_file.content_type or "audio/webm"
         
-        print(f"Transcribing audio... (Size: {len(audio_data)} bytes, Type: {content_type})")
-        user_transcript = transcribe_audio(audio_data, content_type)
+        # Check if we should use Sarvam STT (for Indic languages when Sarvam TTS selected)
+        use_sarvam_stt = False
+        if tts_provider == "sarvam" and tts_language:
+            if not tts_language.startswith("en-"):
+                use_sarvam_stt = True
+        
+        if use_sarvam_stt:
+            print(f"Transcribing audio with Sarvam (Language: {tts_language})...")
+            user_transcript = transcribe_audio_sarvam(audio_data, language_code=tts_language, content_type=content_type)
+        else:
+            # Fallback to Deepgram for English
+            stt_language = "en"
+            print(f"Transcribing audio with Deepgram (Language: {stt_language})...")
+            user_transcript = transcribe_audio(audio_data, language=stt_language, content_type=content_type)
+
         print(f"Transcript: '{user_transcript}'")
         
         if not user_transcript.strip():
@@ -250,11 +334,16 @@ def process_interview_turn(req: https_fn.Request) -> https_fn.Response:
                 content_type="application/json"
             )
         
-        # 3. Generate AI Response (OpenAI)
+        # 3. Generate AI Response (Groq)
         ai_response_text = generate_response(user_transcript, chat_history, interview_type)
         
-        # 4. Text-to-Speech (ElevenLabs)
-        audio_bytes = synthesize_speech(ai_response_text)
+        # 4. Text-to-Speech
+        print(f"Synthesizing speech using {tts_provider}...")
+        if tts_provider == "sarvam":
+            audio_bytes = synthesize_speech_sarvam(ai_response_text, tts_language)
+        else:
+            audio_bytes = synthesize_speech_edge(ai_response_text)
+            
         audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
         
         # 5. Return response
@@ -279,7 +368,7 @@ def process_interview_turn(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     cors=cors_options,
-    secrets=["DEEPGRAM_API_KEY", "GROQ_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"],
+    secrets=["DEEPGRAM_API_KEY", "GROQ_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "SARVAM_API_KEY"],
 )
 def health_check(req: https_fn.Request) -> https_fn.Response:
     """Simple health check endpoint."""
@@ -290,9 +379,9 @@ def health_check(req: https_fn.Request) -> https_fn.Response:
                 "groq": bool(GROQ_API_KEY),
                 "deepgram": bool(DEEPGRAM_API_KEY),
                 "elevenlabs": bool(ELEVENLABS_API_KEY),
+                "sarvam": bool(SARVAM_API_KEY),
             }
         }),
         status=200,
         content_type="application/json"
     )
-
