@@ -9,15 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
+# Copy requirements from root (copied from functions/ during implementation)
 COPY requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the functions code
-# Since we are in the functions directory, we copy Everything
-COPY . .
+# Copy the functions code explicitly to the current dir
+COPY functions/ .
 
 # Expose port
 EXPOSE 8080

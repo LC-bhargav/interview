@@ -1,0 +1,7 @@
+Checking root: https://interview-production-ac52.up.railway.app/
+Root status: 404
+Root body: {"status":"error","code":404,"message":"Application not found","request_id":"kmBSnNquT0KBjXT-5nX1uw"}
+
+Checking health: https://interview-production-ac52.up.railway.app/interview-92a23/us-central1/health_check
+Health status: 404
+Health body: {"status":"error","code":404,"message":"Application not found","request_id":"ss2qb3RbQGCZbVgqss7a6g"}
